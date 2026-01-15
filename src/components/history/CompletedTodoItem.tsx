@@ -6,15 +6,19 @@ import TodoItemActions from './TodoItemActions';
 interface CompletedTodoItemProps {
   todo: TodoItem;
   onViewHistory: (todo: TodoItem) => void;
-  onUncomplete: (id: number) => void;
-  onDelete: (id: number) => void;
+  onUncomplete: (id: string) => void;
+  onDelete: (id: string) => void;
+  isUncompleting?: boolean;
+  isDeleting?: boolean;
 }
 
 export default function CompletedTodoItem({ 
   todo, 
   onViewHistory, 
   onUncomplete, 
-  onDelete 
+  onDelete,
+  isUncompleting = false,
+  isDeleting = false
 }: CompletedTodoItemProps) {
   return (
     <div className="flex items-start gap-4 p-4 rounded-lg transition-all duration-300 bg-gray-50">
@@ -28,6 +32,8 @@ export default function CompletedTodoItem({
       <TodoItemActions
         onUncomplete={() => onUncomplete(todo.id)}
         onDelete={() => onDelete(todo.id)}
+        isUncompleting={isUncompleting}
+        isDeleting={isDeleting}
       />
     </div>
   );

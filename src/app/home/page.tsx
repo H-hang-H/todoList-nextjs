@@ -3,8 +3,15 @@
 import { useState, useEffect } from 'react';
 import { PlusOutlined, EditOutlined, DeleteOutlined, CheckOutlined, HistoryOutlined } from '@ant-design/icons';
 import { Input, Button, Modal, message, Empty, Card, Space, Tag } from 'antd';
-import Link from 'next/link';
 import type { TodoItem } from '@/types/todo';
+import { 
+  fetchActiveTodos, 
+  fetchCompletedTodos,
+  createTodo,
+  updateTodoText,
+  markAsCompleted,
+  deleteTodo
+} from '@/lib/todoService';
 
 export default function Home() {
   const [todos, setTodos] = useState<TodoItem[]>([]);
@@ -16,82 +23,106 @@ export default function Home() {
   const [historyItem, setHistoryItem] = useState<TodoItem | null>(null);
   const [completedCount, setCompletedCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [addingTodo, setAddingTodo] = useState(false);
+  const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
 
-  // 从 localStorage 加载数据
+  // 从 Supabase 加载数据
   useEffect(() => {
-    const savedTodos = localStorage.getItem('todos');
-    if (savedTodos) {
-      setTodos(JSON.parse(savedTodos));
-    }
-    
-    const savedCompletedCount = localStorage.getItem('completedCount');
-    if (savedCompletedCount) {
-      setCompletedCount(parseInt(savedCompletedCount));
-    }
-    
-    // 数据加载完成后隐藏加载状态
-    setIsLoading(false);
+    loadData();
   }, []);
 
-  // 保存到 localStorage
-  useEffect(() => {
-    localStorage.setItem('todos', JSON.stringify(todos));
-  }, [todos]);
+  const loadData = async () => {
+    try {
+      const [active, completed] = await Promise.all([
+        fetchActiveTodos(),
+        fetchCompletedTodos()
+      ]);
+      setTodos(active);
+      setCompletedCount(completed.length);
+    } catch (error) {
+      message.error('加载待办事项失败');
+      console.error(error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // 添加新任务
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!inputValue.trim()) {
       message.warning('请输入任务内容');
       return;
     }
 
-    const newTodo: TodoItem = {
-      id: Date.now(),
-      text: inputValue.trim(),
-      completed: false,
-      createdAt: new Date().toISOString(),
-      editHistory: [],
-    };
-
-    setTodos([newTodo, ...todos]);
-    setInputValue('');
-    message.success('添加成功');
+    setAddingTodo(true);
+    try {
+      const newTodo = await createTodo(inputValue.trim());
+      if (newTodo) {
+        setTodos([newTodo, ...todos]);
+        setInputValue('');
+        message.success('添加成功');
+      } else {
+        message.error('添加失败');
+      }
+    } catch (error) {
+      message.error('添加失败');
+      console.error(error);
+    } finally {
+      setAddingTodo(false);
+    }
   };
 
   // 切换完成状态
-  const handleToggle = (id: number) => {
-    const todo = todos.find(t => t.id === id);
-    if (todo) {
-      const completedTodo = {
-        ...todo,
-        completed: true,
-        completedAt: new Date().toISOString(),
-      };
-      // 保存到已完成列表
-      const completedTodos = JSON.parse(localStorage.getItem('completedTodos') || '[]');
-      localStorage.setItem('completedTodos', JSON.stringify([completedTodo, ...completedTodos]));
-      
-      // 更新完成计数
-      const newCount = parseInt(localStorage.getItem('completedCount') || '0') + 1;
-      localStorage.setItem('completedCount', newCount.toString());
-      setCompletedCount(newCount);
-      
-      setTodos(todos.filter(t => t.id !== id));
-      message.success('任务已完成');
+  const handleToggle = async (id: string) => {
+    setTogglingIds(prev => new Set(prev).add(id));
+    try {
+      const success = await markAsCompleted(id);
+      if (success) {
+        const updatedTodos = todos.filter(t => t.id !== id);
+        setTodos(updatedTodos);
+        setCompletedCount(completedCount + 1);
+        message.success('任务已完成');
+      } else {
+        message.error('操作失败');
+      }
+    } catch (error) {
+      message.error('操作失败');
+      console.error(error);
+    } finally {
+      setTogglingIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(id);
+        return newSet;
+      });
     }
   };
 
   // 删除任务
-  const handleDelete = (id: number) => {
+  const handleDelete = (id: string) => {
     Modal.confirm({
       title: '确认删除',
       content: '确定要删除这个任务吗？',
       okText: '删除',
       cancelText: '取消',
       okButtonProps: { danger: true },
-      onOk: () => {
-        setTodos(todos.filter(todo => todo.id !== id));
-        message.success('删除成功');
+      onOk: async () => {
+        setDeletingId(id);
+        try {
+          const success = await deleteTodo(id);
+          if (success) {
+            setTodos(todos.filter(todo => todo.id !== id));
+            message.success('删除成功');
+          } else {
+            message.error('删除失败');
+          }
+        } catch (error) {
+          message.error('删除失败');
+          console.error(error);
+        } finally {
+          setDeletingId(null);
+        }
       },
     });
   };
@@ -110,31 +141,44 @@ export default function Home() {
   };
 
   // 保存编辑
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!editingValue.trim()) {
       message.warning('任务内容不能为空');
       return;
     }
 
     if (editingItem) {
-      const updatedTodo = todos.map(todo => {
-        if (todo.id === editingItem.id) {
-          const newEditRecord = {
-            text: todo.text,
-            editedAt: new Date().toISOString(),
-          };
-          return {
-            ...todo,
-            text: editingValue.trim(),
-            editHistory: [newEditRecord, ...todo.editHistory],
-          };
+      setSavingEdit(true);
+      try {
+        const success = await updateTodoText(editingItem.id, editingValue.trim());
+        if (success) {
+          const updatedTodos = todos.map(todo => {
+            if (todo.id === editingItem.id) {
+              const newEditRecord = {
+                text: todo.text,
+                editedAt: new Date().toISOString(),
+              };
+              return {
+                ...todo,
+                text: editingValue.trim(),
+                editHistory: [newEditRecord, ...todo.editHistory],
+              };
+            }
+            return todo;
+          });
+          setTodos(updatedTodos);
+          setIsModalOpen(false);
+          setEditingItem(null);
+          message.success('修改成功');
+        } else {
+          message.error('修改失败');
         }
-        return todo;
-      });
-      setTodos(updatedTodo);
-      setIsModalOpen(false);
-      setEditingItem(null);
-      message.success('修改成功');
+      } catch (error) {
+        message.error('修改失败');
+        console.error(error);
+      } finally {
+        setSavingEdit(false);
+      }
     }
   };
 
@@ -160,11 +204,15 @@ export default function Home() {
             <Tag color="green">已完成: {completedCount}</Tag>
           </div>
           <div className="flex justify-center mt-4">
-            <Link href="/history">
-              <Button type="primary" icon={<HistoryOutlined />}>
-                查看已完成事件
-              </Button>
-            </Link>
+            <Button 
+              type="primary" 
+              icon={<HistoryOutlined />}
+              onClick={async () => {
+                window.location.href = '/history';
+              }}
+            >
+              查看已完成事件
+            </Button>
           </div>
         </Card>
 
@@ -184,9 +232,11 @@ export default function Home() {
               icon={<PlusOutlined />}
               onClick={handleAdd}
               size="large"
+              loading={addingTodo}
+              disabled={addingTodo}
               className="bg-blue-500 hover:bg-blue-600"
             >
-              添加
+              {addingTodo ? '添加中...' : '添加'}
             </Button>
           </Space.Compact>
         </Card>
@@ -230,13 +280,16 @@ export default function Home() {
                       icon={<CheckOutlined />}
                       onClick={() => handleToggle(todo.id)}
                       size="small"
+                      loading={togglingIds.has(todo.id)}
+                      disabled={togglingIds.has(todo.id)}
                     >
-                      完成
+                      {togglingIds.has(todo.id) ? '完成中...' : '完成'}
                     </Button>
                     <Button
                       icon={<EditOutlined />}
                       onClick={() => handleEdit(todo)}
                       size="small"
+                      disabled={togglingIds.has(todo.id) || deletingId === todo.id}
                     >
                       编辑
                     </Button>
@@ -245,14 +298,16 @@ export default function Home() {
                       icon={<DeleteOutlined />}
                       onClick={() => handleDelete(todo.id)}
                       size="small"
+                      loading={deletingId === todo.id}
+                      disabled={deletingId === todo.id || togglingIds.has(todo.id)}
                     >
-                      删除
+                      {deletingId === todo.id ? '删除中...' : '删除'}
                     </Button>
                   </div>
                 </div>
               ))}
             </div>
-          )}
+          ) }
         </Card>
 
         {/* 编辑弹窗 */}
@@ -266,6 +321,8 @@ export default function Home() {
           }}
           okText="保存"
           cancelText="取消"
+          confirmLoading={savingEdit}
+          okButtonProps={{ disabled: savingEdit }}
         >
           <Input
             placeholder="请输入任务内容"
@@ -289,7 +346,7 @@ export default function Home() {
             <Button key="close" type="primary" onClick={() => {
               setHistoryModalOpen(false);
               setHistoryItem(null);
-            }}>
+            }} >
               关闭
             </Button>
           ]}
