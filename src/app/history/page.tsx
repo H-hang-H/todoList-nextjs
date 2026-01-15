@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { DeleteOutlined, CloseOutlined, HomeOutlined } from '@ant-design/icons';
-import { Button, Modal, message, Empty, Card, Tag } from 'antd';
-import Link from 'next/link';
+import { Modal, message, Card, Empty } from 'antd';
 import type { TodoItem } from '@/types/todo';
+import LoadingSpinner from '@/components/history/LoadingSpinner';
+import HistoryHeader from '@/components/history/HistoryHeader';
+import CompletedTodoItem from '@/components/history/CompletedTodoItem';
+import HistoryModal from '@/components/history/HistoryModal';
 
 export default function History() {
   const [completedTodos, setCompletedTodos] = useState<TodoItem[]>([]);
@@ -76,34 +78,10 @@ export default function History() {
 
   return (
     <>
-      {/* 加载状态 */}
-      {isLoading && (
-        <div className="fixed inset-0 bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center z-50">
-          <div className="text-center">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
-            <p className="mt-4 text-gray-600">加载中...</p>
-          </div>
-        </div>
-      )}
+      {isLoading && <LoadingSpinner />}
       <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 p-4 md:p-8">
       <div className="max-w-2xl mx-auto">
-        {/* 标题卡片 */}
-        <Card className="mb-6 shadow-lg">
-          <h1 className="text-2xl md:text-3xl font-bold text-center text-gray-800 mb-2">
-            📋 已完成事件
-          </h1>
-          <div className="flex justify-center gap-4 text-sm">
-            <Tag color="blue">未完成: {activeCount}</Tag>
-            <Tag color="green">已完成: {completedTodos.length}</Tag>
-          </div>
-          <div className="flex justify-center mt-4">
-            <Link href="/home">
-              <Button type="primary" icon={<HomeOutlined />}>
-                返回待办列表
-              </Button>
-            </Link>
-          </div>
-        </Card>
+        <HistoryHeader activeCount={activeCount} completedCount={completedTodos.length} />
 
         {/* 已完成列表 */}
         <Card className="shadow-md" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
@@ -115,108 +93,26 @@ export default function History() {
           ) : (
             <div className="space-y-2">
               {completedTodos.map((todo) => (
-                <div
+                <CompletedTodoItem
                   key={todo.id}
-                  className="flex items-start gap-4 p-4 rounded-lg transition-all duration-300 bg-gray-50"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="text-base mb-1 line-through text-gray-400">
-                      {todo.text}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      创建于: {new Date(todo.createdAt).toLocaleString('zh-CN', {
-                        year: 'numeric',
-                        month: '2-digit',
-                        day: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                      {todo.completedAt && (
-                        <span className="ml-2">
-                          完成于: {new Date(todo.completedAt).toLocaleString('zh-CN', {
-                            year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                        </span>
-                      )}
-                    </div>
-                    {todo.editHistory && todo.editHistory.length > 0 && (
-                      <div className="text-xs text-blue-500 mt-1 cursor-pointer hover:underline" onClick={() => handleViewHistory(todo)}>
-                        查看编辑记录 ({todo.editHistory.length})
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex gap-2 flex-shrink-0">
-                    <Button
-                      type="default"
-                      icon={<CloseOutlined />}
-                      onClick={() => handleUncomplete(todo.id)}
-                      size="small"
-                      className="text-green-600"
-                    >
-                      撤销
-                    </Button>
-                    <Button
-                      danger
-                      icon={<DeleteOutlined />}
-                      onClick={() => handleDelete(todo.id)}
-                      size="small"
-                    >
-                      删除
-                    </Button>
-                  </div>
-                </div>
+                  todo={todo}
+                  onViewHistory={handleViewHistory}
+                  onUncomplete={handleUncomplete}
+                  onDelete={handleDelete}
+                />
               ))}
             </div>
           )}
         </Card>
 
-        {/* 编辑历史弹窗 */}
-        <Modal
-          title="编辑历史"
+        <HistoryModal
           open={historyModalOpen}
-          onCancel={() => {
+          todo={historyItem}
+          onClose={() => {
             setHistoryModalOpen(false);
             setHistoryItem(null);
           }}
-          footer={[
-            <Button key="close" type="primary" onClick={() => {
-              setHistoryModalOpen(false);
-              setHistoryItem(null);
-            }}>
-              关闭
-            </Button>
-          ]}
-        >
-          {historyItem && historyItem.editHistory && historyItem.editHistory.length > 0 ? (
-            <div className="space-y-3">
-              {historyItem.editHistory.map((record, index) => (
-                <div key={index} className="p-3 bg-gray-50 rounded-lg">
-                  <div className="text-sm text-gray-800 mb-1">
-                    原内容: {record.text}
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    编辑时间: {new Date(record.editedAt).toLocaleString('zh-CN', {
-                      year: 'numeric',
-                      month: '2-digit',
-                      day: '2-digit',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <Empty
-              description="暂无编辑记录"
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-            />
-          )}
-        </Modal>
+        />
       </div>
     </div>
     </>
