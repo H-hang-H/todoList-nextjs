@@ -10,6 +10,8 @@ export default function History() {
   const [completedTodos, setCompletedTodos] = useState<TodoItem[]>([]);
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [historyItem, setHistoryItem] = useState<TodoItem | null>(null);
+  const [activeCount, setActiveCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
 
   // 从 localStorage 加载数据
   useEffect(() => {
@@ -17,6 +19,13 @@ export default function History() {
     if (savedCompletedTodos) {
       setCompletedTodos(JSON.parse(savedCompletedTodos));
     }
+    
+    const savedTodos = localStorage.getItem('todos');
+    if (savedTodos) {
+      setActiveCount(JSON.parse(savedTodos).length);
+    }
+    
+    setIsLoading(false);
   }, []);
 
   // 保存到 localStorage
@@ -65,10 +74,18 @@ export default function History() {
     setHistoryModalOpen(true);
   };
 
-  const activeCount = parseInt(localStorage.getItem('todos') ? JSON.parse(localStorage.getItem('todos') || '[]').length.toString() : '0');
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 p-4 md:p-8">
+    <>
+      {/* 加载状态 */}
+      {isLoading && (
+        <div className="fixed inset-0 bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center z-50">
+          <div className="text-center">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+            <p className="mt-4 text-gray-600">加载中...</p>
+          </div>
+        </div>
+      )}
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 p-4 md:p-8">
       <div className="max-w-2xl mx-auto">
         {/* 标题卡片 */}
         <Card className="mb-6 shadow-lg">
@@ -202,5 +219,6 @@ export default function History() {
         </Modal>
       </div>
     </div>
+    </>
   );
 }
